@@ -615,7 +615,7 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
 
         if !defs.isEmpty {
             var defsContainer = container.nestedContainer(keyedBy: DynamicCodingKey.self, forKey: .defs)
-            for (name, node) in defs {
+            for (name, node) in defs.sorted(by: { $0.key < $1.key }) {
                 try defsContainer.encode(node, forKey: DynamicCodingKey(stringValue: name)!)
             }
         }
