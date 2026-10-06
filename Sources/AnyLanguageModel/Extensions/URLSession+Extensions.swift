@@ -287,26 +287,20 @@ extension URLSession {
         }
     }
 
-    /// Decodes each line as it arrives, including a last line without a newline.
+    /// Decodes each line as it arrives, the way the AsyncHTTPClient transport does.
     private func decodeAndYieldJSONLines<T: Decodable & Sendable, Bytes>(
         _ asyncBytes: Bytes,
         using decoder: JSONDecoder,
         to continuation: AsyncThrowingStream<T, any Error>.Continuation
     ) async throws where Bytes: AsyncSequence, Bytes.Element == UInt8 {
-        var line = Data()
+        var lines = JSONLines()
         for try await byte in asyncBytes {
-            guard byte == UInt8(ascii: "\n") else {
-                line.append(byte)
-                continue
-            }
+            guard let line = lines.append(byte) else { continue }
             try Task.checkCancellation()
-            if !line.isEmpty {
-                continuation.yield(try decoder.decode(T.self, from: line))
-                line.removeAll(keepingCapacity: true)
-            }
+            continuation.yield(try decoder.decode(T.self, from: Data(line)))
         }
-        if !line.isEmpty {
-            continuation.yield(try decoder.decode(T.self, from: line))
+        if let line = lines.finish() {
+            continuation.yield(try decoder.decode(T.self, from: Data(line)))
         }
     }
 
