@@ -5,7 +5,9 @@ import Testing
 
 #if MLX
     import class MLX.MLXArray
+    import struct MLXLMCommon.DefaultMessageGenerator
     import struct MLXLMCommon.LMInput
+    import struct MLXLMCommon.ToolCall
 
     private let shouldRunMLXTests = {
         // Enable when explicitly requested via environment variable
@@ -561,6 +563,93 @@ import Testing
             let session = LanguageModelSession(model: model)
             let response = try await session.respond(to: "Say hello after cache clear", options: boundedOptions)
             #expect(!response.content.isEmpty)
+        }
+    }
+
+    // These tests need no model or Metal library, so unlike the suite above they also run under
+    // `swift test --traits MLX`.
+    @Suite("MLXLanguageModel tool rounds")
+    struct MLXToolRoundTests {
+        // Each round decodes its calls into new dictionaries, which can list the same keys in a different order,
+        // and the parser gives every call a new ID.
+        @Test func repeatedToolRoundIsDetectedRegardlessOfArgumentOrder() throws {
+            func decode(_ pattern: String, id: String) throws -> MLXLMCommon.ToolCall {
+                let json = #"""
+                    {"id": "\#(id)", "function": {"name": "search",
+                     "arguments": {"pattern": "\#(pattern)", "file": "notes.md", "context": 0}}}
+                    """#
+                return try JSONDecoder().decode(MLXLMCommon.ToolCall.self, from: Data(json.utf8))
+            }
+            // Keep every decode alive, so each has its own hash seed, and repeat one that lists its keys differently.
+            let decodes = try (1 ... 20).map { try decode("report", id: "call_\($0)") }
+            let first = decodes[0]
+            let repeated = decodes.first { "\($0.function.arguments)" != "\(first.function.arguments)" } ?? decodes[1]
+            let changed = try decode("summary", id: "call_21")
+
+            var rounds = ToolRoundLimit(provider: "MLX")
+            try rounds.record([first.roundCall])
+            do {
+                try rounds.record([repeated.roundCall])
+                Issue.record("Expected the repeated round to stop the response.")
+            } catch LanguageModelSession.GenerationError.decodingFailure(let context) {
+                #expect(context.debugDescription.contains("repeated"))
+            }
+
+            var otherRounds = ToolRoundLimit(provider: "MLX")
+            try otherRounds.record([first.roundCall])
+            try otherRounds.record([changed.roundCall])
+        }
+
+        // Chat templates match a tool result to its call by `tool_call_id`, and some drop a result without one.
+        @Test func toolCallsAreSentBackBeforeTheirResults() throws {
+            let transcript = Transcript(entries: [
+                .prompt(Transcript.Prompt(segments: [.text(.init(content: "Is it warmer in Paris or Tokyo?"))])),
+                .toolCalls(
+                    Transcript.ToolCalls([
+                        Transcript.ToolCall(
+                            id: "call_1",
+                            toolName: "getWeather",
+                            arguments: try GeneratedContent(json: #"{"city":"Paris"}"#)
+                        ),
+                        Transcript.ToolCall(
+                            id: "call_2",
+                            toolName: "getWeather",
+                            arguments: try GeneratedContent(json: #"{"city":"Tokyo"}"#)
+                        ),
+                    ])
+                ),
+                .toolOutput(
+                    Transcript.ToolOutput(
+                        id: "call_1",
+                        toolName: "getWeather",
+                        segments: [.text(.init(content: "18°C"))]
+                    )
+                ),
+                .toolOutput(
+                    Transcript.ToolOutput(
+                        id: "call_2",
+                        toolName: "getWeather",
+                        segments: [.text(.init(content: "24°C"))]
+                    )
+                ),
+                .response(Transcript.Response(assetIDs: [], segments: [.text(.init(content: "Tokyo is warmer."))])),
+            ])
+            let session = LanguageModelSession(model: MockLanguageModel(), transcript: transcript)
+
+            let chat = convertTranscriptToMLXChat(requestContext: session.resolvedRequestContext(), fallbackPrompt: "")
+            let messages = DefaultMessageGenerator().generate(messages: chat)
+
+            let roles = messages.map { $0["role"] as? String }
+            try #require(roles == ["user", "assistant", "tool", "assistant", "tool", "assistant"])
+            // Llama 3 chat templates reject an assistant message with more than one tool call.
+            for (index, id, result) in [(1, "call_1", "18°C"), (3, "call_2", "24°C")] {
+                let calls = try #require(messages[index]["tool_calls"] as? [[String: any Sendable]])
+                #expect(calls.count == 1)
+                #expect(calls.first?["id"] as? String == id)
+                #expect(messages[index + 1]["tool_call_id"] as? String == id)
+                #expect(messages[index + 1]["name"] as? String == "getWeather")
+                #expect(messages[index + 1]["content"] as? String == result)
+            }
         }
     }
 #endif  // MLX
