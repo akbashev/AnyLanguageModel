@@ -47,9 +47,8 @@ struct ToolRoundLimit {
 
     /// Records a round of tool calls before any of them runs.
     ///
-    /// - Throws: A decoding failure
-    ///   when the round exceeds ``maximumRounds``
-    ///   or repeats the previous round's calls.
+    /// - Throws: A decoding failure when the round exceeds ``maximumRounds``; a typed repeated
+    ///   round error when it exactly matches the previous round.
     mutating func record(_ calls: [Call]) throws {
         rounds += 1
         if rounds > Self.maximumRounds {
@@ -61,11 +60,8 @@ struct ToolRoundLimit {
             )
         }
         if calls == previousCalls {
-            throw LanguageModelSession.GenerationError.decodingFailure(
-                .init(
-                    debugDescription:
-                        "Detected repeated \(provider) tool-call signature and aborted to avoid an infinite tool loop."
-                )
+            throw LanguageModelSession.GenerationError.repeatedToolCallRound(
+                .init(debugDescription: "Detected repeated \(provider) tool-call signature.")
             )
         }
         previousCalls = calls

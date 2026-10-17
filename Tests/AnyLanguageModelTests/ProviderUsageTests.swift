@@ -806,6 +806,8 @@ import Testing
                 return nil
             } catch LanguageModelSession.GenerationError.decodingFailure(let context) {
                 return context.debugDescription
+            } catch LanguageModelSession.GenerationError.repeatedToolCallRound(let context) {
+                return context.debugDescription
             } catch {
                 return "\(error)"
             }

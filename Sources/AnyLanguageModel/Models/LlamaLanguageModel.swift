@@ -692,12 +692,7 @@ import Foundation
         }
 
         private static func repeatedToolCallLoopError() -> LanguageModelSession.GenerationError {
-            .decodingFailure(
-                .init(
-                    debugDescription:
-                        "Detected repeated Llama tool-call signature and aborted to avoid an infinite tool loop."
-                )
-            )
+            .repeatedToolCallRound(.init(debugDescription: "Detected repeated Llama tool-call signature."))
         }
 
         private func currentToolCallFormat() -> LlamaToolCallFormat {

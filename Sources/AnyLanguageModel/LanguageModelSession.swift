@@ -1438,6 +1438,9 @@ extension LanguageModelSession {
         case unsupportedGuide(Context)
         case unsupportedLanguageOrLocale(Context)
         case decodingFailure(Context)
+        /// The provider stopped before running a tool-call round that exactly repeated the
+        /// preceding round. A caller may continue from the completed tool results.
+        case repeatedToolCallRound(Context)
         case rateLimited(Context)
         case concurrentRequests(Context)
         case refusal(Refusal, Context)
