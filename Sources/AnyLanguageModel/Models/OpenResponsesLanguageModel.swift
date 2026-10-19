@@ -35,6 +35,8 @@ public struct OpenResponsesLanguageModel: LanguageModel {
     /// reasoning/text options. Use ``extraBody`` for parameters not yet modeled.
     public struct CustomGenerationOptions: AnyLanguageModel.CustomGenerationOptions, Codable, Sendable {
         /// Controls which tool the model should use, if any.
+        ///
+        /// When set, it takes precedence over ``GenerationOptions/toolCallingMode``.
         public var toolChoice: ToolChoice?
 
         /// The list of tools that are permitted for this request.
@@ -808,6 +810,10 @@ private enum OpenResponsesAPI {
 
         if let tools {
             body["tools"] = .array(tools.map { $0.jsonValue })
+            // Sent only with tools. A custom `toolChoice` or `extraBody` overrides it below.
+            if let toolCallingMode = options.toolCallingMode {
+                body["tool_choice"] = .string(toolCallingMode.kind.openAIToolChoice)
+            }
         }
 
         if type != String.self {
