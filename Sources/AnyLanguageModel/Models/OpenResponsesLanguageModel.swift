@@ -614,7 +614,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
         // Open Responses follows OpenAI's structured outputs, which need an object root.
         let responseSchema = ProviderResponseSchema(schema, generating: type, wrapping: .nonObjectRoots)
         var entries: [Transcript.Entry] = []
-        var usage = ReportedUsage()
+        var usage = RequestsUsage()
         var text = ""
         // The text of earlier tool rounds, which string responses include.
         var earlierText = ""
@@ -674,7 +674,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                         content: empty.content,
                         rawContent: empty.rawContent,
                         transcriptEntries: ArraySlice(entries),
-                        usage: usage.value
+                        requests: usage
                     )
                 case .invocations(let invocations):
                     if !invocations.isEmpty {
@@ -705,7 +705,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                 content: text as! Content,
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
-                usage: usage.value
+                requests: usage
             )
         }
         if let jsonString = extractJSONFromOutput(lastOutput) {
@@ -715,7 +715,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                 content: content,
                 rawContent: generatedContent,
                 transcriptEntries: ArraySlice(entries),
-                usage: usage.value
+                requests: usage
             )
         }
         throw OpenResponsesLanguageModelError.noResponseGenerated

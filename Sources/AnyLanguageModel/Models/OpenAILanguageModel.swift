@@ -495,7 +495,7 @@ public struct OpenAILanguageModel: LanguageModel {
         // Structured outputs need an object root.
         let responseSchema = ProviderResponseSchema(schema, generating: type, wrapping: .nonObjectRoots)
         var entries: [Transcript.Entry] = []
-        var usage = ReportedUsage()
+        var usage = RequestsUsage()
         var text = ""
         // The text of earlier tool rounds, which string responses include.
         var earlierText = ""
@@ -575,7 +575,7 @@ public struct OpenAILanguageModel: LanguageModel {
                         content: empty.content,
                         rawContent: empty.rawContent,
                         transcriptEntries: ArraySlice(entries),
-                        usage: usage.value
+                        requests: usage
                     )
                 case .invocations(let invocations):
                     if !invocations.isEmpty {
@@ -611,7 +611,7 @@ public struct OpenAILanguageModel: LanguageModel {
                 content: text as! Content,
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
-                usage: usage.value,
+                requests: usage,
                 providerMetadata: responseContentMetadata(text, roundText: roundText)
             )
         }
@@ -622,7 +622,7 @@ public struct OpenAILanguageModel: LanguageModel {
             content: content,
             rawContent: generatedContent,
             transcriptEntries: ArraySlice(entries),
-            usage: usage.value
+            requests: usage
         )
     }
 
@@ -635,7 +635,7 @@ public struct OpenAILanguageModel: LanguageModel {
         // Structured outputs need an object root.
         let responseSchema = ProviderResponseSchema(schema, generating: type, wrapping: .nonObjectRoots)
         var entries: [Transcript.Entry] = []
-        var usage = ReportedUsage()
+        var usage = RequestsUsage()
         var text = ""
         // The text of earlier tool rounds, which string responses include.
         var earlierText = ""
@@ -699,7 +699,7 @@ public struct OpenAILanguageModel: LanguageModel {
                         content: empty.content,
                         rawContent: empty.rawContent,
                         transcriptEntries: ArraySlice(entries),
-                        usage: usage.value
+                        requests: usage
                     )
                 case .invocations(let invocations):
                     if !invocations.isEmpty {
@@ -733,7 +733,7 @@ public struct OpenAILanguageModel: LanguageModel {
                 content: text as! Content,
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
-                usage: usage.value
+                requests: usage
             )
         }
 
@@ -744,7 +744,7 @@ public struct OpenAILanguageModel: LanguageModel {
                 content: content,
                 rawContent: generatedContent,
                 transcriptEntries: ArraySlice(entries),
-                usage: usage.value
+                requests: usage
             )
         }
         throw OpenAILanguageModelError.noResponseGenerated
