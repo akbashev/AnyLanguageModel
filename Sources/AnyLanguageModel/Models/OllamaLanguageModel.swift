@@ -169,6 +169,7 @@ public struct OllamaLanguageModel: LanguageModel {
 
         var entries: [Transcript.Entry] = []
         let usage = chatResponse.reportedUsage?.value ?? .zero
+        RequestUsageChannel.report(usage)
         if let thinking = chatResponse.message.thinking, !thinking.isEmpty {
             entries.append(.reasoning(.ollama(thinking)))
         }
