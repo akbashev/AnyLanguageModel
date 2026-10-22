@@ -718,6 +718,10 @@
         /// The session's usage when each call started: all the rounds up to the call's own.
         private var usageAtCalls: [LanguageModelSession.Usage] = []
 
+        /// The usage counted for the response so far: the rounds that completed before the latest
+        /// call started.
+        private var reported: LanguageModelSession.Usage = .zero
+
         /// The calls that ran, each followed by its output, in the order they started.
         var entries: [Transcript.Entry] {
             started.flatMap { started -> [Transcript.Entry] in
@@ -726,9 +730,14 @@
             }
         }
 
+        /// A call started: the round that made it completed, so what it used is counted for the
+        /// response now, as each request's usage is, and kept if the response then throws.
         func start(_ call: Transcript.ToolCall) {
             started.append(Started(call: call, output: nil))
-            usageAtCalls.append(sessionUsage)
+            let usage = sessionUsage
+            usageAtCalls.append(usage)
+            RequestUsageChannel.report(usage.subtracting(reported))
+            reported = usage
         }
 
         /// Records the session that sends the request's rounds, whose usage counts them all.

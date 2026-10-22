@@ -1050,6 +1050,40 @@ import Testing
                 #expect(session.usage == response.usage)
             }
 
+            /// A response that throws keeps the usage of the rounds it completed: the round that
+            /// called the tool is counted as the call starts, before the tool fails.
+            @available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *)
+            @Test func failedResponseCountsTheRoundsItCompleted() async throws {
+                guard #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) else { return }
+                let session = LanguageModelSession(model: SystemLanguageModel.default, tools: [FailingWeatherTool()])
+                do {
+                    _ = try await session.respond(to: Self.prompt)
+                } catch {
+                    #expect(session.usage.input.totalTokenCount > 0)
+                    #expect(session.usage.output.totalTokenCount > 0)
+                    return
+                }
+                // The model answered without calling the tool, so nothing failed.
+            }
+
+            /// A weather tool whose lookup fails.
+            struct FailingWeatherTool: Tool {
+                let name = "getWeather"
+                let description = "Retrieve the latest weather information for a city"
+
+                @Generable
+                struct Arguments {
+                    @Guide(description: "The city to fetch the weather for")
+                    var city: String
+                }
+
+                struct Unavailable: Error {}
+
+                func call(arguments: Arguments) async throws -> String {
+                    throw Unavailable()
+                }
+            }
+
             /// The session counts the final request, and more when the response ran tools in
             /// earlier rounds.
             @available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *)
