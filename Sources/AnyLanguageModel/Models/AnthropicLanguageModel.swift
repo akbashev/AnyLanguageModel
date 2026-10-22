@@ -378,6 +378,10 @@ public struct AnthropicLanguageModel: LanguageModel {
     /// The model identifier to use for generation.
     public let model: String
 
+    /// How long to wait for a streamed response to start. With URLSession, it's how long to
+    /// wait for each part of the response, so it applies while the response streams too.
+    public let responseStartTimeout: Duration?
+
     private let transport: any HTTPTransport
 
     /// Creates an Anthropic language model.
@@ -388,6 +392,10 @@ public struct AnthropicLanguageModel: LanguageModel {
     ///   - apiVersion: The API version to use for requests. Defaults to `2023-06-01`.
     ///   - betas: Optional beta version(s) of the API to use.
     ///   - model: The model identifier (for example, "claude-3-5-sonnet-20241022").
+    ///   - responseStartTimeout: How long to wait for a streamed response to start, or `nil`, the
+    ///     default, for the transport to decide: a URL session waits as its configuration says, and
+    ///     AsyncHTTPClient up to 180 seconds. On Linux, a URL session waits whole seconds, so it
+    ///     rounds up to the next one.
     ///   - transport: How it sends its requests: by default ``makeDefaultTransport()``.
     public init(
         baseURL: URL = defaultBaseURL,
@@ -395,6 +403,7 @@ public struct AnthropicLanguageModel: LanguageModel {
         apiVersion: String = defaultAPIVersion,
         betas: [String]? = nil,
         model: String,
+        responseStartTimeout: Duration? = nil,
         transport: any HTTPTransport = makeDefaultTransport(),
     ) {
         var baseURL = baseURL
@@ -407,6 +416,7 @@ public struct AnthropicLanguageModel: LanguageModel {
         self.apiVersion = apiVersion
         self.betas = betas
         self.model = model
+        self.responseStartTimeout = responseStartTimeout
         self.transport = transport
     }
 
@@ -642,7 +652,8 @@ public struct AnthropicLanguageModel: LanguageModel {
                         let events: AsyncThrowingStream<AnthropicStreamEvent, any Error> =
                             transport.fetchEventStream(
                                 HTTPRequest(method: .post, url: url, headerFields: headers),
-                                body: body
+                                body: body,
+                                timeout: responseStartTimeout
                             )
                         var blocks: [Int: AnthropicStreamBlock] = [:]
                         var lastSnapshot: LanguageModelSession.ResponseStream<Content>.Snapshot?
