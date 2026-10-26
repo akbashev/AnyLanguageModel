@@ -456,6 +456,7 @@ import Testing
             let session = LanguageModelSession(model: model)
 
             let response = try await session.respond(to: "Say 'Hello'")
+            attachResponse(response)
             #expect(!response.content.isEmpty)
         }
 
@@ -468,6 +469,7 @@ import Testing
             )
 
             let response = try await session.respond(to: "What is 2+2?")
+            attachResponse(response)
             #expect(!response.content.isEmpty)
         }
 
@@ -481,6 +483,7 @@ import Testing
                 to: "Generate a number",
                 options: options
             )
+            attachResponse(response)
             #expect(!response.content.isEmpty)
         }
 
@@ -533,10 +536,12 @@ import Testing
                 let options = GenerationOptions(sampling: .greedy)
 
                 let first = try await session.respond(to: "What should you reply?", options: options)
+                attachResponse(first, "first")
                 #expect(first.content.localizedCaseInsensitiveContains("apple"))
 
                 state.useWeather = true
                 let second = try await session.respond(to: "How's the weather in San Francisco?", options: options)
+                attachResponse(second, "second")
                 #expect(second.content.contains("72°F"))
 
                 #expect(
@@ -553,6 +558,7 @@ import Testing
             let session = LanguageModelSession(model: SystemLanguageModel.default, tools: [weatherTool])
 
             let response = try await session.respond(to: "How's the weather in San Francisco?")
+            attachResponse(response)
 
             // The calls Foundation Models ran are in the response's transcript, with their outputs.
             var foundToolOutput = false
@@ -577,6 +583,7 @@ import Testing
             session.toolExecutionDelegate = delegate
 
             let response = try await session.respond(to: "How's the weather in San Francisco? Use the tool.")
+            attachResponse(response)
 
             #expect(await weatherTool.calls.isEmpty)
             let generated = await delegate.generated
@@ -599,6 +606,7 @@ import Testing
             session.toolExecutionDelegate = delegate
 
             let response = try await session.respond(to: "How's the weather in San Francisco? Use the tool.")
+            attachResponse(response)
 
             #expect(await weatherTool.calls.isEmpty)
             let generated = await delegate.generated
@@ -700,6 +708,7 @@ import Testing
                 }
                 throw error
             }
+            attachResponse(firstResponse, "firstResponse")
             #expect(!firstResponse.content.isEmpty)
 
             let secondResponse: LanguageModelSession.Response<String>
@@ -714,6 +723,7 @@ import Testing
                 }
                 throw error
             }
+            attachResponse(secondResponse, "secondResponse")
             let repliedNumbers = secondResponse.content
                 .split { !$0.isNumber }
                 .compactMap { Int($0) }
@@ -735,6 +745,7 @@ import Testing
                 to: "Generate a friendly greeting",
                 generating: Greeting.self
             )
+            attachResponse(response)
 
             #expect(!response.content.message.isEmpty)
         }
@@ -747,6 +758,7 @@ import Testing
                 to: "Create a fictional person who is a software engineer",
                 generating: Person.self
             )
+            attachResponse(response)
 
             #expect(!response.content.name.isEmpty)
             #expect(response.content.age >= 0 && response.content.age <= 150)
@@ -761,6 +773,7 @@ import Testing
                 to: "Calculate 15 + 27",
                 generating: MathResult.self
             )
+            attachResponse(response)
 
             #expect(!response.content.expression.isEmpty)
             #expect(!response.content.explanation.isEmpty)
@@ -776,6 +789,7 @@ import Testing
                 to: "Describe the color red",
                 generating: ColorInfo.self
             )
+            attachResponse(response)
 
             #expect(!response.content.name.isEmpty)
             #expect(!response.content.hexCode.isEmpty)
@@ -792,6 +806,7 @@ import Testing
                 to: "Recommend 3 classic science fiction books",
                 generating: BookRecommendations.self
             )
+            attachResponse(response)
 
             if response.content.titles.isEmpty {
                 #expect(response.rawContent.jsonString.contains("titles"))
@@ -808,6 +823,7 @@ import Testing
                 to: "Analyze the sentiment of: 'I love this product!'",
                 generating: SentimentAnalysis.self
             )
+            attachResponse(response)
 
             #expect(["positive", "negative", "neutral"].contains(response.content.sentiment.lowercased()))
             #expect(response.content.confidence >= 0.0 && response.content.confidence <= 1.0)
@@ -822,6 +838,7 @@ import Testing
                 to: "Plan a counter: add 2, then add 3, then report the total.",
                 generating: CounterPlan.self
             )
+            attachResponse(response)
 
             #expect(!response.content.steps.isEmpty)
         }
@@ -836,6 +853,7 @@ import Testing
                 to: "Add 2 to the counter.",
                 generating: CounterStep.self
             )
+            attachResponse(response)
 
             let type = try response.rawContent.value(String.self, forProperty: "type")
             #expect(["add", "reset", "report"].contains(type))
@@ -852,6 +870,7 @@ import Testing
                 to: "Create an interesting fictional character",
                 generating: Person.self
             )
+            attachResponse(response)
 
             #expect(!response.content.name.isEmpty)
             #expect(response.content.age >= 0)
