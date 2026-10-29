@@ -736,6 +736,17 @@
             started.append(Started(call: call, output: nil))
             let usage = sessionUsage
             usageAtCalls.append(usage)
+            count(upTo: usage)
+        }
+
+        /// Foundation Models returned: every round completed, so what they used is counted for the
+        /// response now, before its content is made, and kept if anything throws after.
+        func returned() {
+            count(upTo: sessionUsage)
+        }
+
+        /// Counts for the response what the rounds used up to `usage` that isn't counted yet.
+        private func count(upTo usage: LanguageModelSession.Usage) {
             RequestUsageChannel.report(usage.subtracting(reported))
             reported = usage
         }
@@ -1496,6 +1507,7 @@
         await record.sends(with: fmSession)
         if type == String.self {
             let fmResponse = try await fmSession.respond(to: fmPrompt, options: fmOptions)
+            await record.returned()
             let generatedContent = GeneratedContent(fmResponse.content)
             return LanguageModelSession.Response(
                 content: fmResponse.content as! Content,
@@ -1512,6 +1524,7 @@
                 includeSchemaInPrompt: includeSchemaInPrompt,
                 options: fmOptions
             )
+            await record.returned()
             let requests = await record.requests(final: fmResponse.finalRequestUsage)
 
             func finalize(content: Content) -> LanguageModelSession.Response<Content> {

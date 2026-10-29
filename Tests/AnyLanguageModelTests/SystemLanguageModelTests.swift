@@ -1056,14 +1056,73 @@ import Testing
             @Test func failedResponseCountsTheRoundsItCompleted() async throws {
                 guard #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) else { return }
                 let session = LanguageModelSession(model: SystemLanguageModel.default, tools: [FailingWeatherTool()])
-                do {
-                    _ = try await session.respond(to: Self.prompt)
-                } catch {
-                    #expect(session.usage.input.totalTokenCount > 0)
-                    #expect(session.usage.output.totalTokenCount > 0)
-                    return
+                let error = await #expect(throws: (any Error).self) { try await session.respond(to: Self.prompt) }
+                #expect(error.map(FailingWeatherTool.failed(in:)) == true, "\(String(describing: error))")
+                #expect(session.usage.input.totalTokenCount > 0)
+                #expect(session.usage.output.totalTokenCount > 0)
+            }
+
+            /// A response that throws once Foundation Models returns, as a model wrapping this one
+            /// may, keeps what its requests used: it's counted as Foundation Models returns, before
+            /// the content is made from it.
+            @available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *)
+            @Test func responseThatThrowsAfterFoundationModelsReturnsKeepsItsUsage() async throws {
+                guard #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) else { return }
+                let text = LanguageModelSession(model: ThrowingAfterwards())
+                await #expect(throws: ThrowingAfterwards.Failure.self) { try await text.respond(to: "Say hello.") }
+                #expect(text.usage.input.totalTokenCount > 0)
+                #expect(text.usage.output.totalTokenCount > 0)
+
+                let structured = LanguageModelSession(model: ThrowingAfterwards())
+                await #expect(throws: ThrowingAfterwards.Failure.self) {
+                    try await structured.respond(to: "Greet Ann.", generating: Greeting.self)
                 }
-                // The model answered without calling the tool, so nothing failed.
+                #expect(structured.usage.input.totalTokenCount > 0)
+                #expect(structured.usage.output.totalTokenCount > 0)
+            }
+
+            /// A model as another library would write one: it calls the system model through
+            /// `respond`, then fails.
+            @available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *)
+            struct ThrowingAfterwards: LanguageModel {
+                enum Failure: Error { case afterTheSystemModel }
+
+                let wrapped = SystemLanguageModel.default
+
+                var availability: Availability<SystemLanguageModel.UnavailableReason> { wrapped.availability }
+
+                func respond<Content>(
+                    within session: LanguageModelSession,
+                    to prompt: Prompt,
+                    generating type: Content.Type,
+                    includeSchemaInPrompt: Bool,
+                    options: GenerationOptions
+                ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
+                    _ = try await wrapped.respond(
+                        within: session,
+                        to: prompt,
+                        generating: type,
+                        includeSchemaInPrompt: includeSchemaInPrompt,
+                        options: options
+                    )
+                    throw Failure.afterTheSystemModel
+                }
+
+                func streamResponse<Content>(
+                    within session: LanguageModelSession,
+                    to prompt: Prompt,
+                    generating type: Content.Type,
+                    includeSchemaInPrompt: Bool,
+                    options: GenerationOptions
+                ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
+                    wrapped.streamResponse(
+                        within: session,
+                        to: prompt,
+                        generating: type,
+                        includeSchemaInPrompt: includeSchemaInPrompt,
+                        options: options
+                    )
+                }
             }
 
             /// A weather tool whose lookup fails.
@@ -1081,6 +1140,20 @@ import Testing
 
                 func call(arguments: Arguments) async throws -> String {
                     throw Unavailable()
+                }
+
+                /// Whether `error` is the lookup's failure, which Foundation Models wraps in its own
+                /// `ToolCallError`.
+                @available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *)
+                static func failed(in error: any Error) -> Bool {
+                    if error is Unavailable { return true }
+                    if let wrapped = error as? FoundationModels.LanguageModelSession.ToolCallError {
+                        return failed(in: wrapped.underlyingError)
+                    }
+                    if let wrapped = error as? LanguageModelSession.ToolCallError {
+                        return failed(in: wrapped.underlyingError)
+                    }
+                    return false
                 }
             }
 
