@@ -17,15 +17,19 @@ extension GenerationSchema {
         return schema.schemaPrompt()
     }
 
-    /// The schema in words, with its JSON Schema: inlined, as a model reads it best.
+    /// The schema in words, with its JSON Schema: inlined, as a model reads it best, or, when it
+    /// can't be, as a recursive schema can't, as it's encoded, with its definitions.
     func schemaPrompt() -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let jsonSchema = try? inlinedJSONSchema(constantsAsEnums: false),
-            let data = try? encoder.encode(jsonSchema),
-            let schemaJSON = String(data: data, encoding: .utf8)
-        else {
+        let inlined = try? inlinedJSONSchema(constantsAsEnums: false)
+        let data: Data? =
+            if let inlined { try? encoder.encode(inlined) } else { try? encoder.encode(self) }
+        guard let data, let schemaJSON = String(data: data, encoding: .utf8) else {
             return "Respond with valid JSON only."
+        }
+        guard let jsonSchema = inlined ?? (try? JSONDecoder().decode(JSONSchema.self, from: data)) else {
+            return "Respond with valid JSON matching this schema:\n\(schemaJSON)"
         }
 
         var header = "Respond with valid JSON matching this \(jsonSchema.typeName) schema"
