@@ -1814,6 +1814,13 @@ extension AnthropicLanguageModel {
 private struct AnthropicModelPage: Decodable {
     struct Model: Decodable {
         let id: String
+        /// The most tokens the model takes as input: its context window.
+        let maxInputTokens: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case id
+            case maxInputTokens = "max_input_tokens"
+        }
     }
 
     let data: [Model]
@@ -1835,14 +1842,14 @@ extension AnthropicLanguageModel {
     public func checkAvailability() async throws(CancellationError) -> ModelAvailability {
         let apiKey = tokenProvider()
         do {
-            let _: AnthropicModelPage.Model = try await transport.fetch(
+            let found: AnthropicModelPage.Model = try await transport.fetch(
                 HTTPRequest(
                     method: .get,
                     url: baseURL.appendingPathComponent("v1/models").appendingPathComponent(model),
                     headerFields: Self.headers(apiKey: apiKey, apiVersion: apiVersion, betas: betas)
                 )
             )
-            return .available(ModelDetails())
+            return .available(ModelDetails(contextSize: found.maxInputTokens))
         } catch {
             return .unavailable(try ModelUnavailability(asking: error, keyGiven: !apiKey.isEmpty, missingModel: true))
         }

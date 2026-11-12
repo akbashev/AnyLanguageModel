@@ -163,6 +163,18 @@ struct CheckAvailabilityTests {
         #expect(transport.requests.first?.headerFields[HTTPField.Name("anthropic-beta")!] == "beta")
     }
 
+    @Test("Anthropic says the model's context window, when it's known")
+    func anthropicContextSize() async throws {
+        let transport = FakeTransport(replies: [
+            .init(chunks: [#"{"id":"claude-sonnet","max_input_tokens":1000000,"max_tokens":128000}"#]),
+            .init(chunks: [#"{"id":"claude-sonnet","max_input_tokens":null}"#]),
+        ])
+        let model = AnthropicLanguageModel(apiKey: "secret", model: "claude-sonnet", transport: transport)
+
+        #expect(try await model.checkAvailability().details == ModelDetails(contextSize: 1_000_000))
+        #expect(try await model.checkAvailability().details == ModelDetails())
+    }
+
     @Test(
         "Gemini is asked for the model itself; a key it says isn't valid is refused",
         arguments: [
