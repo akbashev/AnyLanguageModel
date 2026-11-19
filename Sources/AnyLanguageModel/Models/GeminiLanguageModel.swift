@@ -379,7 +379,8 @@ public struct GeminiLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                         rawContent: GeneratedContent(text),
                         transcriptEntries: ArraySlice(entries),
                         requests: usage,
-                        providerMetadata: providerMetadata
+                        providerMetadata: providerMetadata,
+                        reachedTokenLimit: firstCandidate.reachedTokenLimit
                     )
                 }
 
@@ -390,7 +391,8 @@ public struct GeminiLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                     rawContent: generatedContent,
                     transcriptEntries: ArraySlice(entries),
                     requests: usage,
-                    providerMetadata: providerMetadata
+                    providerMetadata: providerMetadata,
+                    reachedTokenLimit: firstCandidate.reachedTokenLimit
                 )
             }
         }
@@ -514,6 +516,8 @@ public struct GeminiLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                         var functionCalls: [GeminiFunctionCall] = []
                         for try await chunk in stream {
                             state.usage.merge(chunk.usageMetadata?.reportedUsage)
+                            let finished = chunk.candidates.first?.finishReason != nil
+                            if finished { state.reachedTokenLimit = chunk.candidates.first?.reachedTokenLimit ?? false }
                             var yieldedText = false
                             for part in partsWithoutThoughts(chunk.candidates.first?.content.parts) {
                                 parts.append(part)
@@ -530,7 +534,7 @@ public struct GeminiLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                                     break
                                 }
                             }
-                            if chunk.usageMetadata?.reportedUsage != nil, !yieldedText,
+                            if chunk.usageMetadata?.reportedUsage != nil || finished, !yieldedText,
                                 let snapshot = state.snapshot(providerMetadata: try textPartMetadata(parts))
                             {
                                 continuation.yield(snapshot)
@@ -1312,7 +1316,10 @@ private struct GeminiGenerateContentResponse: Codable, Sendable {
 
 private struct GeminiCandidate: Codable, Sendable {
     let content: GeminiContent
+    /// Why the answer ended, on its last chunk: `MAX_TOKENS` when it reached its token limit.
     let finishReason: String?
+
+    var reachedTokenLimit: Bool { finishReason == "MAX_TOKENS" }
 
     enum CodingKeys: String, CodingKey {
         case content

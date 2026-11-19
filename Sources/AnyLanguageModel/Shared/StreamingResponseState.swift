@@ -5,6 +5,8 @@ struct StreamingResponseState<Content: Generable> {
     var entries: [Transcript.Entry] = []
     /// The current round's usage.
     var usage = ReportedUsage()
+    /// Whether the provider said the current round's request stopped at its token limit.
+    var reachedTokenLimit = false
     /// The usage of the rounds before the current one.
     private var earlierRequests = RequestsUsage()
 
@@ -45,6 +47,7 @@ struct StreamingResponseState<Content: Generable> {
         else { return nil }
         snapshot.transcriptEntries = ArraySlice(entries)
         snapshot.providerMetadata = providerMetadata
+        snapshot.reachedTokenLimit = reachedTokenLimit
         return snapshot
     }
 
@@ -92,6 +95,7 @@ struct StreamingResponseState<Content: Generable> {
     mutating func beginNextRound() {
         earlierRequests.add(usage.value)
         usage = ReportedUsage()
+        reachedTokenLimit = false
         earlierText = responseText
         text = ""
     }

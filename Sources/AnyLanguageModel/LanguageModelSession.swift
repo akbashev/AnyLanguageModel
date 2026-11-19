@@ -1411,7 +1411,8 @@ public final class LanguageModelSession: @unchecked Sendable {
             rawContent: rawContent,
             transcriptEntries: response.transcriptEntries,
             requests: response.requests,
-            providerMetadata: response.providerMetadata
+            providerMetadata: response.providerMetadata,
+            reachedTokenLimit: response.reachedTokenLimit
         )
     }
 
@@ -1468,7 +1469,8 @@ public final class LanguageModelSession: @unchecked Sendable {
                                     rawContent: rawContent,
                                     transcriptEntries: lastSnapshot.transcriptEntries,
                                     requests: lastSnapshot.requests,
-                                    providerMetadata: lastSnapshot.providerMetadata
+                                    providerMetadata: lastSnapshot.providerMetadata,
+                                    reachedTokenLimit: lastSnapshot.reachedTokenLimit
                                 )
                             )
                         }
@@ -1714,6 +1716,19 @@ public final class LanguageModelSession: @unchecked Sendable {
         ///   so code that uses it ports to Foundation Models on OS 27.
         public var usage: Usage { requests.final }
 
+        /// Whether the model stopped because the response reached its token limit
+        /// before the model finished it, so that its content is cut short:
+        /// the ``GenerationOptions/maximumResponseTokens`` it was given,
+        /// or the most the provider lets a response take.
+        ///
+        /// As ``usage`` does, it describes the response's final request.
+        /// It's `false` when the model finished, and when the provider doesn't say.
+        ///
+        /// - Note: This property is exclusive to AnyLanguageModel.
+        ///   Foundation Models doesn't say why a response ended.
+        ///   A language model outside this module sets it on the response it creates.
+        public var reachedTokenLimit: Bool
+
         /// The usage of each of the response's requests.
         internal let requests: RequestsUsage
 
@@ -1752,13 +1767,15 @@ public final class LanguageModelSession: @unchecked Sendable {
             rawContent: GeneratedContent,
             transcriptEntries: ArraySlice<Transcript.Entry>,
             requests: RequestsUsage,
-            providerMetadata: [String: String]? = nil
+            providerMetadata: [String: String]? = nil,
+            reachedTokenLimit: Bool = false
         ) {
             self.content = content
             self.rawContent = rawContent
             self.transcriptEntries = transcriptEntries
             self.requests = requests
             self.providerMetadata = providerMetadata
+            self.reachedTokenLimit = reachedTokenLimit
         }
     }
 
@@ -2927,6 +2944,19 @@ extension LanguageModelSession {
                 set { requests.final = newValue }
             }
 
+            /// Whether the model stopped because the response reached its token limit
+            /// before the model finished it, so that its content is cut short:
+            /// the ``GenerationOptions/maximumResponseTokens`` it was given,
+            /// or the most the provider lets a response take.
+            ///
+            /// As ``usage`` does, it describes the latest request so far.
+            /// It's `false` when the model finished, and when the provider doesn't say.
+            ///
+            /// - Note: This property is exclusive to AnyLanguageModel.
+            ///   Foundation Models doesn't say why a response ended.
+            ///   A language model outside this module sets it on the snapshot it creates.
+            public var reachedTokenLimit: Bool
+
             /// The usage of each of the response's requests so far.
             internal var requests: RequestsUsage
 
@@ -2974,13 +3004,15 @@ extension LanguageModelSession {
                 requests: RequestsUsage,
                 providerMetadata: [String: String]? = nil,
                 prepaid: CountedRequestsUsage.Prepaid? = nil,
-                unprepaidUsage: Usage = .zero
+                unprepaidUsage: Usage = .zero,
+                reachedTokenLimit: Bool = false
             ) {
                 self.content = content
                 self.rawContent = rawContent
                 self.transcriptEntries = transcriptEntries
                 self.requests = requests
                 self.providerMetadata = providerMetadata
+                self.reachedTokenLimit = reachedTokenLimit
                 self.prepaid = prepaid
                 self.unprepaidUsage = unprepaidUsage
             }
@@ -3059,7 +3091,8 @@ extension LanguageModelSession.ResponseStream: AsyncSequence {
                     rawContent: last.rawContent,
                     transcriptEntries: last.transcriptEntries,
                     requests: last.requests,
-                    providerMetadata: last.providerMetadata
+                    providerMetadata: last.providerMetadata,
+                    reachedTokenLimit: last.reachedTokenLimit
                 )
             }
         }
@@ -3078,7 +3111,8 @@ extension LanguageModelSession.ResponseStream: AsyncSequence {
                 rawContent: fallbackSnapshot.rawContent,
                 transcriptEntries: fallbackSnapshot.transcriptEntries,
                 requests: fallbackSnapshot.requests,
-                providerMetadata: fallbackSnapshot.providerMetadata
+                providerMetadata: fallbackSnapshot.providerMetadata,
+                reachedTokenLimit: fallbackSnapshot.reachedTokenLimit
             )
         }
 

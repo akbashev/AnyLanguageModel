@@ -540,6 +540,7 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
         var earlierText = ""
         // The text of the final round alone.
         var roundText = ""
+        var reachedTokenLimit = false
         var inFlightMessages: [OpenAIMessage] = []
 
         let toolRounds = session.toolRoundLimit(for: "OpenAI", options: options)
@@ -675,6 +676,7 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
             if let reasoning { entries.append(.reasoning(reasoning)) }
             roundText = choice.message.content ?? ""
             text = earlierText + roundText
+            reachedTokenLimit = choice.finishReason == "length"
             break
         }
 
@@ -684,7 +686,8 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
                 requests: usage,
-                providerMetadata: responseContentMetadata(text, roundText: roundText)
+                providerMetadata: responseContentMetadata(text, roundText: roundText),
+                reachedTokenLimit: reachedTokenLimit
             )
         }
 
@@ -694,7 +697,8 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
             content: content,
             rawContent: generatedContent,
             transcriptEntries: ArraySlice(entries),
-            requests: usage
+            requests: usage,
+            reachedTokenLimit: reachedTokenLimit
         )
     }
 
@@ -715,6 +719,7 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
         var earlierText = ""
         // The text of the final round, which replay sends as the response.
         var roundText = ""
+        var reachedTokenLimit = false
         var lastOutput: [JSONValue]?
         var inFlightMessages: [OpenAIMessage] = []
 
@@ -780,6 +785,7 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
             let toolCalls = extractToolCallsFromOutput(resp.output)
             lastOutput = resp.output
             roundText = resp.outputText ?? extractTextFromOutput(resp.output) ?? ""
+            reachedTokenLimit = resp.reachedTokenLimit
             if !toolCalls.isEmpty {
                 if let output = resp.output {
                     for msg in output {
@@ -841,7 +847,8 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
                 requests: usage,
-                providerMetadata: responseContentMetadata(text, roundText: roundText)
+                providerMetadata: responseContentMetadata(text, roundText: roundText),
+                reachedTokenLimit: reachedTokenLimit
             )
         }
 
@@ -852,7 +859,8 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                 content: content,
                 rawContent: generatedContent,
                 transcriptEntries: ArraySlice(entries),
-                requests: usage
+                requests: usage,
+                reachedTokenLimit: reachedTokenLimit
             )
         }
         throw OpenAILanguageModelError.noResponseGenerated
@@ -997,6 +1005,7 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                                     }
                                 case .completed(let response):
                                     state.usage.merge(response?.usage?.reportedUsage)
+                                    state.reachedTokenLimit = response?.reachedTokenLimit ?? false
                                     // The completed response contains full tool arguments and
                                     // the output items required by the next request.
                                     toolCalls = extractToolCallsFromOutput(response?.output)
@@ -1031,6 +1040,8 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                             var calls: [Int: OpenAIStreamedToolCall] = [:]
                             for try await chunk in events {
                                 state.usage.merge(chunk.usage?.reportedUsage)
+                                let finishReason = chunk.choices.first?.finishReason
+                                if finishReason != nil { state.reachedTokenLimit = finishReason == "length" }
                                 let delta = chunk.choices.first?.delta
                                 if let piece = delta?.content { state.text += piece }
                                 roundReasoning.add(delta)
@@ -1041,7 +1052,9 @@ public struct OpenAILanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                                     if let arguments = delta.function?.arguments { call.arguments += arguments }
                                     calls[delta.index] = call
                                 }
-                                if delta?.content?.isEmpty == false || chunk.usage?.reportedUsage != nil {
+                                if delta?.content?.isEmpty == false || chunk.usage?.reportedUsage != nil
+                                    || finishReason != nil
+                                {
                                     let metadata = responseContentMetadata(state.responseText, roundText: state.text)
                                     if let snapshot = state.snapshot(providerMetadata: metadata) {
                                         continuation.yield(snapshot)
@@ -1558,6 +1571,10 @@ private enum Responses {
         let error: ResponseError?
         let outputText: String?
         let finishReason: String?
+        /// Why the response is incomplete, when it is: `max_output_tokens` when it reached its token limit.
+        let incompleteDetails: IncompleteDetails?
+
+        var reachedTokenLimit: Bool { incompleteDetails?.reason == "max_output_tokens" }
 
         private enum CodingKeys: String, CodingKey {
             case id
@@ -1566,7 +1583,13 @@ private enum Responses {
             case outputText = "output_text"
             case finishReason = "finish_reason"
             case error = "error"
+            case incompleteDetails = "incomplete_details"
         }
+    }
+
+    /// The `incomplete_details` object of a response, which is `null` unless the response is incomplete.
+    struct IncompleteDetails: Decodable, Sendable {
+        let reason: String?
     }
 
     /// The `error` object of a response, which is `null` unless the response failed.
@@ -2052,6 +2075,7 @@ private struct OpenAIToolFunction: Codable, Sendable {
 
 private enum OpenAIResponsesServerEvent: Decodable, Sendable {
     case outputTextDelta(String)
+    /// The response, ended: `response.completed`, or `response.incomplete` when it was cut short.
     case completed(Responses.Response?)
     case failed(ResponseStreamFailure?)
     case ignored
@@ -2062,7 +2086,7 @@ private enum OpenAIResponsesServerEvent: Decodable, Sendable {
         switch type {
         case "response.output_text.delta":
             self = .outputTextDelta(try container.decode(String.self, forKey: .delta))
-        case "response.completed":
+        case "response.completed", "response.incomplete":
             self = .completed(try container.decodeIfPresent(Responses.Response.self, forKey: .response))
         case "response.failed":
             self = .failed(ResponseStreamFailure(from: container, forKey: .response))

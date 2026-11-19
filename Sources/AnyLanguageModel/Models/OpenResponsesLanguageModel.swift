@@ -612,6 +612,7 @@ public struct OpenResponsesLanguageModel: LanguageModel, ProfileRequestIdentifie
                                 }
                             case .completed(let response):
                                 state.usage.merge(response?.usage?.reportedUsage)
+                                state.reachedTokenLimit = response?.reachedTokenLimit ?? false
                                 // The completed response contains full tool arguments and
                                 // the output items required by the next request.
                                 toolCalls = extractToolCallsFromOutput(response?.output)
@@ -707,6 +708,7 @@ public struct OpenResponsesLanguageModel: LanguageModel, ProfileRequestIdentifie
         var earlierText = ""
         // The text of the final round, which replay sends as the response.
         var roundText = ""
+        var reachedTokenLimit = false
         var lastOutput: [JSONValue]?
         var inFlightMessages: [OpenResponsesMessage] = []
         let url = baseURL.appendingPathComponent("responses")
@@ -767,6 +769,7 @@ public struct OpenResponsesLanguageModel: LanguageModel, ProfileRequestIdentifie
             let toolCalls = extractToolCallsFromOutput(resp.output)
             lastOutput = resp.output
             roundText = resp.outputText ?? extractTextFromOutput(resp.output) ?? ""
+            reachedTokenLimit = resp.reachedTokenLimit
             if !toolCalls.isEmpty {
                 if let output = resp.output {
                     for item in output {
@@ -827,7 +830,8 @@ public struct OpenResponsesLanguageModel: LanguageModel, ProfileRequestIdentifie
                 rawContent: GeneratedContent(text),
                 transcriptEntries: ArraySlice(entries),
                 requests: usage,
-                providerMetadata: responseContentMetadata(text, roundText: roundText)
+                providerMetadata: responseContentMetadata(text, roundText: roundText),
+                reachedTokenLimit: reachedTokenLimit
             )
         }
         if let jsonString = extractJSONFromOutput(lastOutput) {
@@ -837,7 +841,8 @@ public struct OpenResponsesLanguageModel: LanguageModel, ProfileRequestIdentifie
                 content: content,
                 rawContent: generatedContent,
                 transcriptEntries: ArraySlice(entries),
-                requests: usage
+                requests: usage,
+                reachedTokenLimit: reachedTokenLimit
             )
         }
         throw OpenResponsesLanguageModelError.noResponseGenerated
@@ -994,6 +999,10 @@ private enum OpenResponsesAPI {
         let usage: ResponsesUsage?
         let outputText: String?
         let error: OpenResponsesError?
+        /// Why the response is incomplete, when it is: `max_output_tokens` when it reached its token limit.
+        let incompleteDetails: IncompleteDetails?
+
+        var reachedTokenLimit: Bool { incompleteDetails?.reason == "max_output_tokens" }
 
         private enum CodingKeys: String, CodingKey {
             case id
@@ -1001,7 +1010,13 @@ private enum OpenResponsesAPI {
             case usage
             case outputText = "output_text"
             case error
+            case incompleteDetails = "incomplete_details"
         }
+    }
+
+    /// The `incomplete_details` object of a response, which is `null` unless the response is incomplete.
+    struct IncompleteDetails: Decodable, Sendable {
+        let reason: String?
     }
 
     struct OpenResponsesError: Decodable, Sendable {
@@ -1421,7 +1436,8 @@ private enum OpenResponsesStreamEvent: Decodable, Sendable {
         switch type {
         case "response.output_text.delta":
             self = .outputTextDelta(try c.decode(String.self, forKey: .delta))
-        case "response.completed":
+        // An incomplete response, cut short, ends the stream as a completed one does.
+        case "response.completed", "response.incomplete":
             self = .completed(try c.decodeIfPresent(OpenResponsesAPI.Response.self, forKey: .response))
         case "response.failed":
             self = .failed(ResponseStreamFailure(from: c, forKey: .response))

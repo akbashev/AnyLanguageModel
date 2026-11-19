@@ -619,7 +619,8 @@ public struct AnthropicLanguageModel: LanguageModel, ProfileRequestIdentifiedLan
                     rawContent: GeneratedContent(text),
                     transcriptEntries: ArraySlice(entries),
                     requests: usage,
-                    providerMetadata: responseContentMetadata(text, roundText: roundText)
+                    providerMetadata: responseContentMetadata(text, roundText: roundText),
+                    reachedTokenLimit: message.stopReason == .maxTokens
                 )
             }
             let rawContent = try GeneratedContent(json: text)
@@ -627,7 +628,8 @@ public struct AnthropicLanguageModel: LanguageModel, ProfileRequestIdentifiedLan
                 content: try Content(rawContent),
                 rawContent: rawContent,
                 transcriptEntries: ArraySlice(entries),
-                requests: usage
+                requests: usage,
+                reachedTokenLimit: message.stopReason == .maxTokens
             )
         }
     }
@@ -804,9 +806,11 @@ public struct AnthropicLanguageModel: LanguageModel, ProfileRequestIdentifiedLan
                                 state.usage.merge(start.message.usage?.reportedUsage)
                             case .messageDelta(let delta):
                                 state.usage.merge(delta.usage?.reportedUsage)
-                                if delta.usage?.reportedUsage != nil {
+                                state.reachedTokenLimit = delta.delta.stopReason == "max_tokens"
+                                if delta.usage?.reportedUsage != nil || state.reachedTokenLimit {
                                     if var current = lastSnapshot {
                                         current.requests = state.requests
+                                        current.reachedTokenLimit = state.reachedTokenLimit
                                         lastSnapshot = current
                                         continuation.yield(current)
                                     } else if let current = state.snapshot(

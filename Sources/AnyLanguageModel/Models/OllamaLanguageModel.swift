@@ -346,7 +346,8 @@ public struct OllamaLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                     content: text as! Content,
                     rawContent: GeneratedContent(text),
                     transcriptEntries: ArraySlice(entries),
-                    requests: usage
+                    requests: usage,
+                    reachedTokenLimit: chatResponse.reachedTokenLimit
                 )
             }
             let generatedContent = try GeneratedContent(json: text)
@@ -354,7 +355,8 @@ public struct OllamaLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                 content: try type.init(generatedContent),
                 rawContent: generatedContent,
                 transcriptEntries: ArraySlice(entries),
-                requests: usage
+                requests: usage,
+                reachedTokenLimit: chatResponse.reachedTokenLimit
             )
         }
     }
@@ -474,7 +476,8 @@ public struct OllamaLanguageModel: LanguageModel, ProfileRequestIdentifiedLangua
                             if let piece = chunk.message.content { state.text += piece }
                             if let piece = chunk.message.thinking { thinking += piece }
                             toolCalls.append(contentsOf: chunk.message.toolCalls ?? [])
-                            if chunk.message.content != nil || chunk.reportedUsage != nil {
+                            state.reachedTokenLimit = chunk.reachedTokenLimit
+                            if chunk.message.content != nil || chunk.reportedUsage != nil || chunk.reachedTokenLimit {
                                 if let snapshot = state.snapshot() { continuation.yield(snapshot) }
                             }
                             if chunk.done { break }
@@ -933,8 +936,12 @@ private struct ChatResponse: Decodable, Sendable {
     let createdAt: Date
     let message: ChatMessageResponse
     let done: Bool
+    /// Why the answer ended, on its last chunk: `length` when it reached its token limit.
+    let doneReason: String?
     let promptEvalCount: Int?
     let evalCount: Int?
+
+    var reachedTokenLimit: Bool { doneReason == "length" }
 
     var reportedUsage: ReportedUsage? {
         ReportedUsage(
@@ -948,6 +955,7 @@ private struct ChatResponse: Decodable, Sendable {
         case createdAt = "created_at"
         case message
         case done
+        case doneReason = "done_reason"
         case promptEvalCount = "prompt_eval_count"
         case evalCount = "eval_count"
     }

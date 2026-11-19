@@ -102,7 +102,8 @@ extension LanguageModelSession {
             rawContent: rawContent,
             transcriptEntries: ArraySlice(prefixEntries + response.transcriptEntries),
             requests: RequestsUsage(earlier: earlierUsage, final: response.requests.final),
-            providerMetadata: providerMetadata
+            providerMetadata: providerMetadata,
+            reachedTokenLimit: response.reachedTokenLimit
         )
     }
 
@@ -181,7 +182,8 @@ extension LanguageModelSession {
                                 requests: RequestsUsage(earlier: earlierUsage, final: snapshot.requests.final),
                                 providerMetadata: providerMetadata,
                                 prepaid: snapshot.prepaid,
-                                unprepaidUsage: unprepaidUsage
+                                unprepaidUsage: unprepaidUsage,
+                                reachedTokenLimit: snapshot.reachedTokenLimit
                             )
                         )
                     }
