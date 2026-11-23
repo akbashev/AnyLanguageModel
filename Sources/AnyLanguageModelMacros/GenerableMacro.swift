@@ -784,11 +784,13 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         return DeclSyntax(
             stringLiteral: """
                 nonisolated public static var generationSchema: GenerationSchema {
-                    return GenerationSchema(
-                        type: Self.self,
-                        description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(structName)\""),\(explicitNil ? "\n            representNilExplicitlyInGeneratedContent: true," : "")
-                        properties: [\(properties.isEmpty ? "" : "\n            \(propertySchemas)\n        ")]
-                    )
+                    return GenerationSchema.building(Self.self) {
+                        GenerationSchema(
+                            type: Self.self,
+                            description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(structName)\""),\(explicitNil ? "\n            representNilExplicitlyInGeneratedContent: true," : "")
+                            properties: [\(properties.isEmpty ? "" : "\n            \(propertySchemas)\n        ")]
+                        )
+                    }
                 }
                 """
         )
@@ -1055,13 +1057,15 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
             return DeclSyntax(
                 stringLiteral: """
                     nonisolated public static var generationSchema: GenerationSchema {
-                        return GenerationSchema(
-                            type: Self.self,
-                            description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""),
-                            cases: [
-                                \(caseSchemas)
-                            ]
-                        )
+                        return GenerationSchema.building(Self.self) {
+                            GenerationSchema(
+                                type: Self.self,
+                                description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""),
+                                cases: [
+                                    \(caseSchemas)
+                                ]
+                            )
+                        }
                     }
                     """
             )

@@ -663,6 +663,30 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
         GenerationSchema(root: node, defs: [:])
     }
 
+    /// The types whose schemas are being built, each from within the one before.
+    @TaskLocal private static var building: Set<String> = []
+
+    /// The schema of `type`, as `build` builds it.
+    ///
+    /// A type that holds itself, directly or through other types,
+    /// asks for its own schema while building it.
+    /// The schema it gets then is a reference to its definition,
+    /// as Foundation Models gives,
+    /// which the schema being built adds once it's whole.
+    /// The `@Generable` macro builds each type's schema with this.
+    ///
+    /// - Parameters:
+    ///   - type: The type whose schema `build` builds.
+    ///   - build: Builds the schema.
+    public static func building(
+        _ type: any Generable.Type,
+        _ build: () -> GenerationSchema
+    ) -> GenerationSchema {
+        let name = String(reflecting: type)
+        guard !building.contains(name) else { return GenerationSchema(root: .ref(name), defs: [:]) }
+        return $building.withValue(building.union([name]), operation: build)
+    }
+
     func withResolvedRoot() -> GenerationSchema? {
         if case .ref(let refName) = root,
             let defNode = defs[refName]

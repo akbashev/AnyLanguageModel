@@ -592,19 +592,30 @@ import Testing
         @Test func ordinaryDynamicInstructionsAreEvaluatedOnlyByTheNativeSession() throws {
             guard #available(macOS 27.0, iOS 27.0, visionOS 27.0, *) else { return }
             let evaluations = Locked(0)
+            let nativeEvaluations = Locked(0)
             let session = AnyLanguageModel.LanguageModelSession(
                 model: MockLanguageModel(),
-                dynamicInstructions: CountingProjectionInstructions(evaluations: evaluations)
+                dynamicInstructions: CountingProjectionInstructions(
+                    evaluations: evaluations,
+                    nativeEvaluations: nativeEvaluations
+                )
             )
+            #expect(evaluations.withLock { $0 } == 0)
             _ = try makeFoundationModelsRequest(
                 model: FoundationModels.SystemLanguageModel.default,
                 session: session,
                 prompt: AnyLanguageModel.Prompt("Current"),
                 fmPrompt: FoundationModels.Prompt("Current")
             )
-            #expect(evaluations.withLock { $0 } == 1)
+            // Foundation Models can evaluate the instructions more than once
+            // when it creates the native session; macOS 27.2 adds one evaluation.
+            // Every evaluation must come through the adapter.
+            let evaluationsAfterRequest = evaluations.withLock { $0 }
+            #expect(nativeEvaluations.withLock { $0 } >= 1)
+            #expect(nativeEvaluations.withLock { $0 } == evaluationsAfterRequest)
             _ = FoundationModelsDynamicInstructionsAdapter(session: session).body
-            #expect(evaluations.withLock { $0 } == 2)
+            #expect(evaluations.withLock { $0 } == evaluationsAfterRequest + 1)
+            #expect(nativeEvaluations.withLock { $0 } == evaluationsAfterRequest + 1)
         }
     }
 
@@ -928,12 +939,23 @@ import Testing
 
     private struct CountingProjectionInstructions: AnyLanguageModel.DynamicInstructions {
         let evaluations: Locked<Int>
+        /// The evaluations made through `FoundationModelsDynamicInstructionsAdapter.body`.
+        var nativeEvaluations: Locked<Int>? = nil
 
         var body: some AnyLanguageModel.DynamicInstructions {
-            let count = evaluations.withLock {
+            let count = recordEvaluation()
+            AnyLanguageModel.Instructions("Revision \(count)")
+        }
+
+        private func recordEvaluation() -> Int {
+            if #available(macOS 27.0, iOS 27.0, visionOS 27.0, watchOS 27.0, *),
+                FoundationModelsDynamicInstructionsAdapter.isEvaluating
+            {
+                nativeEvaluations?.withLock { $0 += 1 }
+            }
+            return evaluations.withLock {
                 $0 += 1; return $0
             }
-            AnyLanguageModel.Instructions("Revision \(count)")
         }
     }
 #endif
