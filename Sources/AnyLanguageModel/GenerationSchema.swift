@@ -572,7 +572,7 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
             let tName = String(reflecting: t)
             members.append(.ref(tName))
 
-            let tSchema = GenerationSchema.schema(of: t)
+            let tSchema = t.generationSchema
             for (defName, defNode) in tSchema.defs {
                 if let existing = allDefs[defName], existing != defNode {
                     fatalError("Duplicate type '\(defName)' with different structure")
@@ -666,19 +666,25 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
     /// The types whose schemas are being built, each from within the one before.
     @TaskLocal private static var building: Set<String> = []
 
-    /// The schema of `type` as another type's schema holds it.
+    /// The schema of `type`, as `build` builds it.
     ///
     /// A type that holds itself, directly or through other types,
     /// asks for its own schema while building it.
     /// The schema it gets then is a reference to its definition,
+    /// as Foundation Models gives,
     /// which the schema being built adds once it's whole.
-    static func schema(of type: any Generable.Type) -> GenerationSchema {
-        // A type whose schema isn't a definition of its own, like an array,
-        // has no name to refer to: what it holds is what's referred to.
-        guard !(type is any UndefinedSchemaType.Type) else { return type.generationSchema }
+    /// The `@Generable` macro builds each type's schema with this.
+    ///
+    /// - Parameters:
+    ///   - type: The type whose schema `build` builds.
+    ///   - build: Builds the schema.
+    public static func building(
+        _ type: any Generable.Type,
+        _ build: () -> GenerationSchema
+    ) -> GenerationSchema {
         let name = String(reflecting: type)
         guard !building.contains(name) else { return GenerationSchema(root: .ref(name), defs: [:]) }
-        return $building.withValue(building.union([name])) { type.generationSchema }
+        return $building.withValue(building.union([name]), operation: build)
     }
 
     func withResolvedRoot() -> GenerationSchema? {
@@ -1004,7 +1010,7 @@ extension GenerationSchema {
                 return (.number(.floatingPoint(description: description, bounds: bounds)), [:])
             } else {
                 // Complex type - use its schema
-                let schema = GenerationSchema.schema(of: Value.self)
+                let schema = Value.generationSchema
 
                 // Arrays should be inlined, not referenced
                 if case .array(let arrayNode) = schema.root {

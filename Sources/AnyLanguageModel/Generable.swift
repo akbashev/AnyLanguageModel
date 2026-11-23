@@ -323,7 +323,7 @@ extension Array: Generable where Element: Generable {
 
     /// An instance of the generation schema.
     public static var generationSchema: GenerationSchema {
-        let elementSchema = GenerationSchema.schema(of: Element.self)
+        let elementSchema = Element.generationSchema
         let arrayNode = GenerationSchema.ArrayNode(
             description: nil,
             items: elementSchema.root,
@@ -339,11 +339,6 @@ extension Array: Generable where Element: Generable {
         return schema
     }
 }
-
-/// A type whose schema is part of the schema that holds it, not a definition of its own.
-protocol UndefinedSchemaType {}
-
-extension Array: UndefinedSchemaType where Element: Generable {}
 
 // MARK: Never
 

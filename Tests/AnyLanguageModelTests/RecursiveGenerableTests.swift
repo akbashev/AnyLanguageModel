@@ -65,6 +65,8 @@ struct RecursiveGenerableTests {
             return
         }
         #expect(items.items == .ref(name))
+        // Each case is defined once, by its own name.
+        #expect(Set(schema.defs.keys) == [name, "\(name).DiscriminatedText", "\(name).DiscriminatedRow"])
     }
 
     @Test func typesHoldingEachOtherReferToTheirDefinitions() throws {
